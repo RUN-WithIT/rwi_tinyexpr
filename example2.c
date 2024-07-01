@@ -1,5 +1,7 @@
-#include "tinyexpr.h"
 #include <stdio.h>
+
+#include "data/data.h"
+#include "tinyexpr.h"
 
 int main(int argc, char *argv[])
 {
@@ -18,14 +20,14 @@ int main(int argc, char *argv[])
 
     /* This will compile the expression and check for errors. */
     int err;
-    te_expr *n = te_compile(expression, vars, 2, &err);
+    te_expr *n = te_compile(NULL, expression, vars, 2, &err);
 
     if (n) {
         /* The variables can be changed here, and eval can be called as many
          * times as you like. This is fairly efficient because the parsing has
          * already been done. */
         x = 3; y = 4;
-        const double r = te_eval(n); printf("Result:\n\t%f\n", r);
+        const double r = te_eval(NULL, n); printf("Result:\n\t%f\n", r);
 
         te_free(n);
     } else {

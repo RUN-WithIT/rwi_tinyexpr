@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
+
+#include "data/data.h"
 #include "tinyexpr.h"
 
 
@@ -66,13 +68,13 @@ void bench(const char *expr, function1 func) {
 
 
     printf("interp ");
-    te_expr *n = te_compile(expr, &lk, 1, 0);
+    te_expr *n = te_compile(NULL, expr, &lk, 1, 0);
     start = clock();
     d = 0;
     for (j = 0; j < loops; ++j)
         for (i = 0; i < loops; ++i) {
             tmp = i;
-            d += te_eval(n);
+            d += te_eval(NULL, n);
         }
     const int eelapsed = (clock() - start) * 1000 / CLOCKS_PER_SEC;
     te_free(n);

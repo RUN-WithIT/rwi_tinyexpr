@@ -31,14 +31,11 @@
 extern "C" {
 #endif
 
-
-
 typedef struct te_expr {
-    int type;
-    union {double value; const double *bound; const void *function;};
-    void *parameters[1];
+  int type;
+  union {double value; const double *bound; const void *function; char *later; };
+  void *parameters[1];
 } te_expr;
-
 
 enum {
     TE_VARIABLE = 0,
@@ -49,7 +46,8 @@ enum {
     TE_CLOSURE0 = 16, TE_CLOSURE1, TE_CLOSURE2, TE_CLOSURE3,
     TE_CLOSURE4, TE_CLOSURE5, TE_CLOSURE6, TE_CLOSURE7,
 
-    TE_FLAG_PURE = 32
+    TE_FLAG_PURE = 32,
+    TE_LATER = 64
 };
 
 typedef struct te_variable {
@@ -57,20 +55,19 @@ typedef struct te_variable {
     const void *address;
     int type;
     void *context;
+    char *later;
 } te_variable;
-
-
 
 /* Parses the input expression, evaluates it, and frees it. */
 /* Returns NaN on error. */
-double te_interp(const char *expression, int *error);
+double te_interp(Dictionary_t *d_co, Dictionary_t *d_soup, const char *expression, int *error);
 
 /* Parses the input expression and binds variables. */
 /* Returns NULL on error. */
-te_expr *te_compile(const char *expression, const te_variable *variables, int var_count, int *error);
+te_expr *te_compile(Dictionary_t *d_co, const char *expression, const te_variable *variables, int var_count, int *error);
 
 /* Evaluates the expression. */
-double te_eval(const te_expr *n);
+double te_eval(Dictionary_t *d_soup, const te_expr *n);
 
 /* Prints debugging information on the syntax tree. */
 void te_print(const te_expr *n);
@@ -79,6 +76,7 @@ void te_print(const te_expr *n);
 /* This is safe to call on NULL pointers. */
 void te_free(te_expr *n);
 
+/* rwi extensions */
 
 #ifdef __cplusplus
 }

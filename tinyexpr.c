@@ -35,13 +35,15 @@ For log = base 10 log do nothing
 For log = natural log uncomment the next line. */
 /* #define TE_NAT_LOG */
 
-#include "tinyexpr.h"
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
 #include <limits.h>
+
+#include "data/data.h"
+#include "tinyexpr.h"
 
 #ifndef NAN
 #define NAN (0.0/0.0)
@@ -56,22 +58,20 @@ typedef double (*te_fun2)(double, double);
 
 enum {
     TOK_NULL = TE_CLOSURE7+1, TOK_ERROR, TOK_END, TOK_SEP,
-    TOK_OPEN, TOK_CLOSE, TOK_NUMBER, TOK_VARIABLE, TOK_INFIX
+    TOK_OPEN, TOK_CLOSE, TOK_NUMBER, TOK_VARIABLE, TOK_INFIX, TOK_LATER = 64
 };
-
 
 enum {TE_CONSTANT = 1};
 
-
 typedef struct state {
-    const char *start;
-    const char *next;
-    int type;
-    union {double value; const double *bound; const void *function;};
-    void *context;
-
-    const te_variable *lookup;
-    int lookup_len;
+  const char *start;
+  const char *next;
+  int type;
+  union {double value; const double *bound; const void *function; char *later; };
+  void *context;
+  const te_variable *lookup;
+  int lookup_len;
+  Dictionary_t *d_co;
 } state;
 
 
@@ -100,9 +100,14 @@ static te_expr *new_expr(const int type, const te_expr *parameters[]) {
     return ret;
 }
 
-
 void te_free_parameters(te_expr *n) {
     if (!n) return;
+    if (n->type == TE_LATER)
+      {
+        if (n->later) free(n->later);
+        n->later = NULL;
+      }
+
     switch (TYPE_MASK(n->type)) {
         case TE_FUNCTION7: case TE_CLOSURE7: te_free(n->parameters[6]);     /* Falls through. */
         case TE_FUNCTION6: case TE_CLOSURE6: te_free(n->parameters[5]);     /* Falls through. */
@@ -217,7 +222,6 @@ static const te_variable *find_lookup(const state *s, const char *name, int len)
     int iters;
     const te_variable *var;
     if (!s->lookup) return 0;
-
     for (var = s->lookup, iters = s->lookup_len; iters; ++var, --iters) {
         if (strncmp(name, var->name, len) == 0 && var->name[len] == '\0') {
             return var;
@@ -226,6 +230,45 @@ static const te_variable *find_lookup(const state *s, const char *name, int len)
     return 0;
 }
 
+
+/* populate var with the later
+ * if later populated, modifiy the state
+ * clean up later
+ */
+static te_variable *find_later(state *s, const char *name, int len, te_variable *var)
+{
+  state is = *s;
+  state *ip = &is;
+  char bl[BUFSIZ];
+  char *pl = NULL;
+
+  /*
+typedef struct te_expr {
+    int type;
+    union {double value; const double *bound; const void *function; char *later};
+    void *parameters[1];
+} te_expr;
+  */
+  for (is = *s, ip = &is, pl = bl;
+       isalpha(ip->next[0]) || isdigit(ip->next[0]) ||
+         (*ip->next == '_') || (*ip->next == ' ');
+       pl++, ip->next++)
+    {
+      *pl = *ip->next;
+    }
+  *pl = '\0';
+  if (*ip->next == '(')
+    {
+      /* unknown function, will cause an error in the caller */
+      return 0;
+    }
+  ip->next--;
+  var->type = TOK_LATER;
+  var->later = RSTRDUP(pl);
+  *s = *ip;
+
+  return var;
+}
 
 
 static double add(double a, double b) {return a + b;}
@@ -261,9 +304,22 @@ void next_token(state *s) {
                 if (!var) var = find_builtin(start, s->next - start);
 
                 if (!var) {
-                    s->type = TOK_ERROR;
-                } else {
-                    switch(TYPE_MASK(var->type))
+                  te_variable lvar;
+                  s->type = TOK_ERROR;
+                  memset (&lvar, '\0', sizeof (struct te_variable));
+                  var = find_later(s, start, s->next - start, &lvar);
+                  if (var)
+                    {
+                      /* s->next is right */
+                      s->type = TOK_LATER;
+                      s->later = var->later;
+                      /* everything done here instead of below ... ready for next loop */
+                      continue;
+                    }
+                }
+
+                if (var) {
+                  switch(TYPE_MASK(var->type))
                     {
                         case TE_VARIABLE:
                             s->type = TOK_VARIABLE;
@@ -590,10 +646,10 @@ static te_expr *list(state *s) {
 
 
 #define TE_FUN(...) ((double(*)(__VA_ARGS__))n->function)
-#define M(e) te_eval(n->parameters[e])
+#define M(d,e) te_eval(d,n->parameters[e])
 
 
-double te_eval(const te_expr *n) {
+double te_eval(Dictionary_t *d_soup, const te_expr *n) {
     if (!n) return NAN;
 
     switch(TYPE_MASK(n->type)) {
@@ -604,13 +660,13 @@ double te_eval(const te_expr *n) {
         case TE_FUNCTION4: case TE_FUNCTION5: case TE_FUNCTION6: case TE_FUNCTION7:
             switch(ARITY(n->type)) {
                 case 0: return TE_FUN(void)();
-                case 1: return TE_FUN(double)(M(0));
-                case 2: return TE_FUN(double, double)(M(0), M(1));
-                case 3: return TE_FUN(double, double, double)(M(0), M(1), M(2));
-                case 4: return TE_FUN(double, double, double, double)(M(0), M(1), M(2), M(3));
-                case 5: return TE_FUN(double, double, double, double, double)(M(0), M(1), M(2), M(3), M(4));
-                case 6: return TE_FUN(double, double, double, double, double, double)(M(0), M(1), M(2), M(3), M(4), M(5));
-                case 7: return TE_FUN(double, double, double, double, double, double, double)(M(0), M(1), M(2), M(3), M(4), M(5), M(6));
+            case 1: return TE_FUN(double)(M(d_soup,0));
+            case 2: return TE_FUN(double, double)(M(d_soup,0), M(d_soup,1));
+            case 3: return TE_FUN(double, double, double)(M(d_soup,0), M(d_soup,1), M(d_soup,2));
+            case 4: return TE_FUN(double, double, double, double)(M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3));
+            case 5: return TE_FUN(double, double, double, double, double)(M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3), M(d_soup,4));
+            case 6: return TE_FUN(double, double, double, double, double, double)(M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3), M(d_soup,4), M(d_soup,5));
+            case 7: return TE_FUN(double, double, double, double, double, double, double)(M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3), M(d_soup,4), M(d_soup,5), M(d_soup,6));
                 default: return NAN;
             }
 
@@ -618,13 +674,13 @@ double te_eval(const te_expr *n) {
         case TE_CLOSURE4: case TE_CLOSURE5: case TE_CLOSURE6: case TE_CLOSURE7:
             switch(ARITY(n->type)) {
                 case 0: return TE_FUN(void*)(n->parameters[0]);
-                case 1: return TE_FUN(void*, double)(n->parameters[1], M(0));
-                case 2: return TE_FUN(void*, double, double)(n->parameters[2], M(0), M(1));
-                case 3: return TE_FUN(void*, double, double, double)(n->parameters[3], M(0), M(1), M(2));
-                case 4: return TE_FUN(void*, double, double, double, double)(n->parameters[4], M(0), M(1), M(2), M(3));
-                case 5: return TE_FUN(void*, double, double, double, double, double)(n->parameters[5], M(0), M(1), M(2), M(3), M(4));
-                case 6: return TE_FUN(void*, double, double, double, double, double, double)(n->parameters[6], M(0), M(1), M(2), M(3), M(4), M(5));
-                case 7: return TE_FUN(void*, double, double, double, double, double, double, double)(n->parameters[7], M(0), M(1), M(2), M(3), M(4), M(5), M(6));
+            case 1: return TE_FUN(void*, double)(n->parameters[1], M(d_soup,0));
+            case 2: return TE_FUN(void*, double, double)(n->parameters[2], M(d_soup,0), M(d_soup,1));
+            case 3: return TE_FUN(void*, double, double, double)(n->parameters[3], M(d_soup,0), M(d_soup,1), M(d_soup,2));
+            case 4: return TE_FUN(void*, double, double, double, double)(n->parameters[4], M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3));
+            case 5: return TE_FUN(void*, double, double, double, double, double)(n->parameters[5], M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3), M(d_soup,4));
+            case 6: return TE_FUN(void*, double, double, double, double, double, double)(n->parameters[6], M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3), M(d_soup,4), M(d_soup,5));
+            case 7: return TE_FUN(void*, double, double, double, double, double, double, double)(n->parameters[7], M(d_soup,0), M(d_soup,1), M(d_soup,2), M(d_soup,3), M(d_soup,4), M(d_soup,5), M(d_soup,6));
                 default: return NAN;
             }
 
@@ -636,7 +692,7 @@ double te_eval(const te_expr *n) {
 #undef TE_FUN
 #undef M
 
-static void optimize(te_expr *n) {
+static void optimize(Dictionary_t *d_co, te_expr *n) {
     /* Evaluates as much as possible. */
     if (n->type == TE_CONSTANT) return;
     if (n->type == TE_VARIABLE) return;
@@ -647,13 +703,13 @@ static void optimize(te_expr *n) {
         int known = 1;
         int i;
         for (i = 0; i < arity; ++i) {
-            optimize(n->parameters[i]);
+          optimize(d_co, n->parameters[i]);
             if (((te_expr*)(n->parameters[i]))->type != TE_CONSTANT) {
                 known = 0;
             }
         }
         if (known) {
-            const double value = te_eval(n);
+          const double value = te_eval(d_co, n);
             te_free_parameters(n);
             n->type = TE_CONSTANT;
             n->value = value;
@@ -662,11 +718,12 @@ static void optimize(te_expr *n) {
 }
 
 
-te_expr *te_compile(const char *expression, const te_variable *variables, int var_count, int *error) {
+te_expr *te_compile(Dictionary_t *d_co, const char *expression, const te_variable *variables, int var_count, int *error) {
     state s;
     s.start = s.next = expression;
     s.lookup = variables;
     s.lookup_len = var_count;
+    s.d_co = d_co;
 
     next_token(&s);
     te_expr *root = list(&s);
@@ -683,19 +740,19 @@ te_expr *te_compile(const char *expression, const te_variable *variables, int va
         }
         return 0;
     } else {
-        optimize(root);
+      optimize(d_co, root);
         if (error) *error = 0;
         return root;
     }
 }
 
 
-double te_interp(const char *expression, int *error) {
-    te_expr *n = te_compile(expression, 0, 0, error);
+double te_interp(Dictionary_t *d_co, Dictionary_t *d_soup, const char *expression, int *error) {
+  te_expr *n = te_compile(d_co, expression, 0, 0, error);
 
     double ret;
     if (n) {
-        ret = te_eval(n);
+      ret = te_eval(d_soup, n);
         te_free(n);
     } else {
         ret = NAN;

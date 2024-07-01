@@ -1,7 +1,9 @@
-#include "tinyexpr.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+
+#include "data/data.h"
+#include "tinyexpr.h"
 
 #ifdef USE_READLINE
 #include <readline/readline.h>
@@ -38,7 +40,7 @@ static void add_history(const char *line) {}
 
 static int eval(const char *str) {
     int err = 0;
-    double r = te_interp(str, &err);
+    double r = te_interp(NULL, NULL, str, &err);
     if (err != 0) {
         printf("Error at position %i\n", err);
         return -1;

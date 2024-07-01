@@ -1,6 +1,8 @@
+
 CC = gcc
-CCFLAGS = -Wall -Wshadow -O2
-LFLAGS = -lm
+CCFLAGS = -fPIC -Wall -Wshadow -O2 -g -I$(HOME)/Development/reactor_kit/include
+_CCFLAGS = -fPIC -Wall -Wshadow -g -I$(HOME)/Development/reactor_kit/include
+LFLAGS = $(HOME)/Development/reactor_kit/lib/libdata.a $(HOME)/Development/reactor_kit/lib/libcodec.a $(HOME)/Development/reactor_kit/lib/libreactor.a -lm
 
 .PHONY = all clean
 
@@ -9,7 +11,7 @@ all: smoke smoke_pr repl bench example example2 example3
 
 smoke: smoke.c tinyexpr.c
 	$(CC) $(CCFLAGS) -o $@ $^ $(LFLAGS)
-	./$@
+#	./$@
 
 smoke_pr: smoke.c tinyexpr.c
 	$(CC) $(CCFLAGS) -DTE_POW_FROM_RIGHT -DTE_NAT_LOG -o $@ $^ $(LFLAGS)

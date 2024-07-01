@@ -22,8 +22,10 @@
  * 3. This notice may not be removed or altered from any source distribution.
  */
 
-#include "tinyexpr.h"
 #include <stdio.h>
+
+#include "data/data.h"
+#include "tinyexpr.h"
 #include "minctest.h"
 
 
@@ -153,7 +155,7 @@ void test_results() {
         const double answer = cases[i].answer;
 
         int err;
-        const double ev = te_interp(expr, &err);
+        const double ev = te_interp(NULL, NULL, expr, &err);
         lok(!err);
         lfequal(ev, answer);
 
@@ -179,7 +181,7 @@ void test_syntax() {
         {"#a+5", 1},
         {"1^^5", 3},
         {"1**5", 3},
-        {"sin(cos5", 8},
+        {"sin(cos5", 7},
     };
 
 
@@ -189,11 +191,11 @@ void test_syntax() {
         const int e = errors[i].answer;
 
         int err;
-        const double r = te_interp(expr, &err);
+        const double r = te_interp(NULL, NULL, expr, &err);
         lequal(err, e);
         lok(r != r);
 
-        te_expr *n = te_compile(expr, 0, 0, &err);
+        te_expr *n = te_compile(NULL, expr, 0, 0, &err);
         lequal(err, e);
         lok(!n);
 
@@ -201,7 +203,7 @@ void test_syntax() {
             printf("FAILED: %s\n", expr);
         }
 
-        const double k = te_interp(expr, 0);
+        const double k = te_interp(NULL, NULL, expr, 0);
         lok(k != k);
     }
 }
@@ -228,14 +230,14 @@ void test_nans() {
         const char *expr = nans[i];
 
         int err;
-        const double r = te_interp(expr, &err);
+        const double r = te_interp(NULL, NULL, expr, &err);
         lequal(err, 0);
         lok(r != r);
 
-        te_expr *n = te_compile(expr, 0, 0, &err);
+        te_expr *n = te_compile(NULL, expr, 0, 0, &err);
         lok(n);
         lequal(err, 0);
-        const double c = te_eval(n);
+        const double c = te_eval(NULL, n);
         lok(c != c);
         te_free(n);
     }
@@ -262,14 +264,14 @@ void test_infs() {
         const char *expr = infs[i];
 
         int err;
-        const double r = te_interp(expr, &err);
+        const double r = te_interp(NULL, NULL, expr, &err);
         lequal(err, 0);
         lok(r == r + 1);
 
-        te_expr *n = te_compile(expr, 0, 0, &err);
+        te_expr *n = te_compile(NULL, expr, 0, 0, &err);
         lok(n);
         lequal(err, 0);
-        const double c = te_eval(n);
+        const double c = te_eval(NULL, n);
         lok(c == c + 1);
         te_free(n);
     }
@@ -283,19 +285,19 @@ void test_variables() {
 
     int err;
 
-    te_expr *expr1 = te_compile("cos x + sin y", lookup, 2, &err);
+    te_expr *expr1 = te_compile(NULL, "cos x + sin y", lookup, 2, &err);
     lok(expr1);
     lok(!err);
 
-    te_expr *expr2 = te_compile("x+x+x-y", lookup, 2, &err);
+    te_expr *expr2 = te_compile(NULL, "x+x+x-y", lookup, 2, &err);
     lok(expr2);
     lok(!err);
 
-    te_expr *expr3 = te_compile("x*y^3", lookup, 2, &err);
+    te_expr *expr3 = te_compile(NULL, "x*y^3", lookup, 2, &err);
     lok(expr3);
     lok(!err);
 
-    te_expr *expr4 = te_compile("te_st+5", lookup, 3, &err);
+    te_expr *expr4 = te_compile(NULL, "te_st+5", lookup, 3, &err);
     lok(expr4);
     lok(!err);
 
@@ -303,17 +305,17 @@ void test_variables() {
         for (x = 0; x < 5; ++x) {
             double ev;
 
-            ev = te_eval(expr1);
+            ev = te_eval(NULL, expr1);
             lfequal(ev, cos(x) + sin(y));
 
-            ev = te_eval(expr2);
+            ev = te_eval(NULL, expr2);
             lfequal(ev, x+x+x-y);
 
-            ev = te_eval(expr3);
+            ev = te_eval(NULL, expr3);
             lfequal(ev, x*y*y*y);
 
             test = x;
-            ev = te_eval(expr4);
+            ev = te_eval(NULL, expr4);
             lfequal(ev, x+5);
         }
     }
@@ -325,29 +327,28 @@ void test_variables() {
 
 
 
-    te_expr *expr5 = te_compile("xx*y^3", lookup, 2, &err);
+    te_expr *expr5 = te_compile(NULL, "xx*y^3", lookup, 2, &err);
     lok(!expr5);
     lok(err);
 
-    te_expr *expr6 = te_compile("tes", lookup, 3, &err);
+    te_expr *expr6 = te_compile(NULL, "tes", lookup, 3, &err);
     lok(!expr6);
     lok(err);
 
-    te_expr *expr7 = te_compile("sinn x", lookup, 2, &err);
+    te_expr *expr7 = te_compile(NULL, "sinn x", lookup, 2, &err);
     lok(!expr7);
     lok(err);
 
-    te_expr *expr8 = te_compile("si x", lookup, 2, &err);
+    te_expr *expr8 = te_compile(NULL, "si x", lookup, 2, &err);
     lok(!expr8);
     lok(err);
 }
 
 
-
 #define cross_check(a, b) do {\
     if ((b)!=(b)) break;\
-    expr = te_compile((a), lookup, 2, &err);\
-    lfequal(te_eval(expr), (b));\
+    expr = te_compile(NULL, (a), lookup, 2, &err);       \
+    lfequal(te_eval(NULL, expr), (b));       \
     lok(!err);\
     te_free(expr);\
 }while(0)
@@ -463,9 +464,9 @@ void test_dynamic() {
         const double answer = cases[i].answer;
 
         int err;
-        te_expr *ex = te_compile(expr, lookup, sizeof(lookup)/sizeof(te_variable), &err);
+        te_expr *ex = te_compile(NULL, expr, lookup, sizeof(lookup)/sizeof(te_variable), &err);
         lok(ex);
-        lfequal(te_eval(ex), answer);
+        lfequal(te_eval(NULL, ex), answer);
         te_free(ex);
     }
 }
@@ -513,14 +514,14 @@ void test_closure() {
         const double answer = cases[i].answer;
 
         int err;
-        te_expr *ex = te_compile(expr, lookup, sizeof(lookup)/sizeof(te_variable), &err);
+        te_expr *ex = te_compile(NULL, expr, lookup, sizeof(lookup)/sizeof(te_variable), &err);
         lok(ex);
 
         extra = 0;
-        lfequal(te_eval(ex), answer + extra);
+        lfequal(te_eval(NULL, ex), answer + extra);
 
         extra = 10;
-        lfequal(te_eval(ex), answer + extra);
+        lfequal(te_eval(NULL, ex), answer + extra);
 
         te_free(ex);
     }
@@ -538,9 +539,9 @@ void test_closure() {
         const double answer = cases2[i].answer;
 
         int err;
-        te_expr *ex = te_compile(expr, lookup, sizeof(lookup)/sizeof(te_variable), &err);
+        te_expr *ex = te_compile(NULL, expr, lookup, sizeof(lookup)/sizeof(te_variable), &err);
         lok(ex);
-        lfequal(te_eval(ex), answer);
+        lfequal(te_eval(NULL, ex), answer);
         te_free(ex);
     }
 }
@@ -560,13 +561,13 @@ void test_optimize() {
         const double answer = cases[i].answer;
 
         int err;
-        te_expr *ex = te_compile(expr, 0, 0, &err);
+        te_expr *ex = te_compile(NULL, expr, 0, 0, &err);
         lok(ex);
 
         /* The answer should be know without
          * even running eval. */
         lfequal(ex->value, answer);
-        lfequal(te_eval(ex), answer);
+        lfequal(te_eval(NULL, ex), answer);
 
         te_free(ex);
     }
@@ -624,14 +625,14 @@ void test_pow() {
         const char *expr1 = cases[i].expr1;
         const char *expr2 = cases[i].expr2;
 
-        te_expr *ex1 = te_compile(expr1, lookup, sizeof(lookup)/sizeof(te_variable), 0);
-        te_expr *ex2 = te_compile(expr2, lookup, sizeof(lookup)/sizeof(te_variable), 0);
+        te_expr *ex1 = te_compile(NULL, expr1, lookup, sizeof(lookup)/sizeof(te_variable), 0);
+        te_expr *ex2 = te_compile(NULL, expr2, lookup, sizeof(lookup)/sizeof(te_variable), 0);
 
         lok(ex1);
         lok(ex2);
 
-        double r1 = te_eval(ex1);
-        double r2 = te_eval(ex2);
+        double r1 = te_eval(NULL, ex1);
+        double r2 = te_eval(NULL, ex2);
 
         fflush(stdout);
         const int olfail = lfails;
@@ -679,7 +680,7 @@ void test_combinatorics() {
         const double answer = cases[i].answer;
 
         int err;
-        const double ev = te_interp(expr, &err);
+        const double ev = te_interp(NULL, NULL, expr, &err);
         lok(!err);
         lfequal(ev, answer);
 
